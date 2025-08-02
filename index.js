@@ -18,46 +18,93 @@ const USER_GROUPS = [
   { label: "Technology Team", value: "tech-team" },
 ];
 
-const TEST_CHANNEL_ID = "C06BS22N3D3";
-const ADMIN_CHANNEL_ID = "C07DPHN9PG9";
+const ADMIN_CHANNEL_ID = "TEST_CHANNEL_ID"; //replace this soon ig
 
-app.event("member_joined_channel", async ({ event, client }) => {
+// check for unassigned users every 10 min
+async function checkForUnassignedUsers(client) {
   try {
-    if (event.channel === TEST_CHANNEL_ID) {
-      await client.views.open({
-        trigger_id: event.trigger_id,
-        user_id: event.user,
-        view: {
-          type: "modal",
-          callback_id: "team_select_modal",
-          title: { type: "plain_text", text: "Welcome to TEDI!" },
-          submit: { type: "plain_text", text: "Submit" },
-          close: { type: "plain_text", text: "Cancel" },
-          blocks: [
-            {
-              type: "input",
-              block_id: "team_input",
-              label: {
-                type: "plain_text",
-                text: "Which team are you part of?",
-              },
-              element: {
-                type: "static_select",
-                action_id: "team_selected",
-                placeholder: { type: "plain_text", text: "Select a team" },
-                options: USER_GROUPS.map((team) => ({
-                  text: { type: "plain_text", text: team.label },
-                  value: team.value,
-                })),
-              },
+    const usersRes = await client.users.list();
+    const allUsers = usersRes.members.filter(
+      (u) => !u.is_bot && u.id !== "USLACKBOT"
+    );
+
+    const groupsRes = await client.usergroups.list();
+    const allGroups = groupsRes.usergroups;
+
+    let allAssignedUserIds = new Set();
+    for (let group of allGroups) {
+      const usersRes = await client.usergroups.users.list({
+        usergroup: group.id,
+      });
+      (usersRes.users || []).forEach((u) => allAssignedUserIds.add(u));
+    }
+
+    const unassigned = allUsers.filter((u) => !allAssignedUserIds.has(u.id));
+
+    for (let user of unassigned) {
+      await client.chat.postMessage({
+        channel: user.id,
+        text: `Hi <@${user.id}>, you haven't selected your team yet. Please set your role.`,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `Hi <@${user.id}>, you haven't selected your team yet. Please set your role.`,
             },
-          ],
-        },
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: "Set My Team" },
+                style: "primary",
+                value: user.id,
+                action_id: "open_team_modal",
+              },
+            ],
+          },
+        ],
       });
     }
   } catch (error) {
-    console.error("Error opening modal:", error);
+    console.error("Error checking unassigned users:", error);
   }
+}
+
+// Run check every 10 min
+setInterval(() => checkForUnassignedUsers(app.client), 10 * 60 * 1000);
+
+app.action("open_team_modal", async ({ ack, body, client }) => {
+  await ack();
+
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: {
+      type: "modal",
+      callback_id: "team_select_modal",
+      title: { type: "plain_text", text: "Set Your Team" },
+      submit: { type: "plain_text", text: "Submit" },
+      close: { type: "plain_text", text: "Cancel" },
+      blocks: [
+        {
+          type: "input",
+          block_id: "team_input",
+          label: { type: "plain_text", text: "Which team are you part of?" },
+          element: {
+            type: "static_select",
+            action_id: "team_selected",
+            placeholder: { type: "plain_text", text: "Select a team" },
+            options: USER_GROUPS.map((team) => ({
+              text: { type: "plain_text", text: team.label },
+              value: team.value,
+            })),
+          },
+        },
+      ],
+    },
+  });
 });
 
 app.view("team_select_modal", async ({ ack, body, view, client }) => {
@@ -69,13 +116,13 @@ app.view("team_select_modal", async ({ ack, body, view, client }) => {
 
   await client.chat.postMessage({
     channel: ADMIN_CHANNEL_ID,
-    text: `<@${user}> has joined TEDI, team: *${selectedTeam}*`,
+    text: `<@${user}> wants to join team: *${selectedTeam}*`,
     blocks: [
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `<@${user}> has joined TEDI, team: *${selectedTeam}*`,
+          text: `<@${user}> wants to join team: *${selectedTeam}*`,
         },
       },
       {
@@ -169,7 +216,6 @@ app.action("decline_user", async ({ ack, body, client }) => {
   });
 });
 
-// Start the app
 (async () => {
   await app.start();
   console.log("⚡️ Slack TEDI Role Bot is running!");
