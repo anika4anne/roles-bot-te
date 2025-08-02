@@ -18,12 +18,12 @@ const USER_GROUPS = [
   { label: "Technology Team", value: "tech-team" },
 ];
 
-const GENERAL_CHANNEL_ID = "C06BS22N3D3";
+const TEST_CHANNEL_ID = "C06BS22N3D3";
 const ADMIN_CHANNEL_ID = "C07DPHN9PG9";
 
 app.event("member_joined_channel", async ({ event, client }) => {
   try {
-    if (event.channel === GENERAL_CHANNEL_ID) {
+    if (event.channel === TEST_CHANNEL_ID) {
       await client.views.open({
         trigger_id: event.trigger_id,
         user_id: event.user,
