@@ -1,13 +1,13 @@
-console.log("Starting bot script...");
-
 require("dotenv").config();
-const { App } = require("@slack/bolt");
-const cron = require("node-cron");
+const { App, AwsLambdaReceiver } = require("@slack/bolt");
+
+const receiver = new AwsLambdaReceiver({
+  signingSecret: process.env.SLACK_SIGNING_SECRET,
+});
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
-  signingSecret: process.env.SLACK_SIGNING_SECRET,
-  port: process.env.PORT || 3000,
+  receiver,
 });
 
 const USER_GROUPS = [
@@ -20,9 +20,8 @@ const USER_GROUPS = [
 ];
 
 const ADMIN_CHANNEL_ID = "C07DPHN9PG9";
-const EXCLUDED_USER_ID = "U06BNANNLA2"; // Emma's user ID to exclude
+const EXCLUDED_USER_ID = "U06BNANNLA2";
 
-// check for unassigned users every day at 12:00 PM
 async function checkForUnassignedUsers(client) {
   try {
     const usersRes = await client.users.list();
@@ -74,11 +73,6 @@ async function checkForUnassignedUsers(client) {
     console.error("Error checking unassigned users:", error);
   }
 }
-
-cron.schedule("0 12 * * *", () => {
-  console.log("Running daily check for unassigned users...");
-  checkForUnassignedUsers(app.client);
-});
 
 app.action("open_team_modal", async ({ ack, body, client }) => {
   await ack();
@@ -220,7 +214,20 @@ app.action("decline_user", async ({ ack, body, client }) => {
   });
 });
 
-(async () => {
-  await app.start();
-  console.log("⚡️ Slack TEDI Role Bot is running!");
-})();
+exports.handler = async (event, context) => {
+  if (event.headers && event.body) {
+    return await receiver.start()(event, context);
+  }
+
+  if (event.source === "aws.events") {
+    try {
+      await checkForUnassignedUsers(app.client);
+      return { statusCode: 200, body: "Checked unassigned users" };
+    } catch (error) {
+      console.error(error);
+      return { statusCode: 500, body: "Error checking users" };
+    }
+  }
+
+  return { statusCode: 400, body: "Unsupported event" };
+};

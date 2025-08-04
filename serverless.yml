@@ -1,0 +1,21 @@
+service: slack-role-bot
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  environment:
+    SLACK_SIGNING_SECRET: ${env:SLACK_SIGNING_SECRET}
+    SLACK_BOT_TOKEN: ${env:SLACK_BOT_TOKEN}
+
+functions:
+  slackBot:
+    handler: index.handler
+    events:
+      - httpApi:
+          path: /slack/events
+          method: post
+      - schedule:
+          rate: cron(0 16 * * ? *) # runs everday at 12pm -_-
+          enabled: true
